@@ -6,7 +6,7 @@ Spring Integration's `MetadataStoreSelector` (the lesson's tool) accepts a messa
 
 ## Decision
 
-The filter only looks the order id up in the `JdbcMetadataStore` (`orderMemory.get(id) == null`); the order is published with `waitForConfirmsOrDie`; only then is the id recorded (`putIfAbsent`). A crash between the confirmation and the record publishes the order a second time on restart, and the order service absorbs the repeat (ADR 2). The memory is a table, so it survives a restart. A bad line is never recorded, so a corrected resend of the same order id is accepted.
+The filter only looks the order id up in the `JdbcMetadataStore` (`orderMemory.get(id) == null`); the order is published with `waitForConfirmsOrDie`; only then is the id recorded (`putIfAbsent`). A crash between the confirmation and the record publishes the order a second time on restart, and the order service absorbs the repeat (ADR 2). The memory is a table, so it survives a restart. A bad line is never recorded as an order, so a corrected resend of the same order id is accepted. A bad line is remembered separately, by a hash of its text, after its dead-letter message has been confirmed: the partner resends whole files, and an unchanged bad line must not make the dead-letter queue grow, while a corrected line is a different line and goes through as an order.
 
 ## Alternatives
 

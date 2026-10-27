@@ -19,6 +19,23 @@ Component names match the lesson's diagram ("The partner's orders as a message f
 | **Legacy batch loader** | [`LegacyBatchLoader`](src/main/java/plainround/orderflow/infrastructure/jdbc/LegacyBatchLoader.java) | The old way: reads the same files, loads `orders_batch`. Kept running, untouched, until the retirement condition is met. |
 | **Reconciliation** | [`ReconcileOrders`](src/main/java/plainround/orderflow/application/ReconcileOrders.java), [`sql/reconcile.sql`](sql/reconcile.sql), [`RetirementPolicy`](src/main/java/plainround/orderflow/domain/RetirementPolicy.java) | The morning comparison of the two tables, its recorded history, and the rule for when the legacy path may go ([ADR 4](docs/adr/0004-run-both-paths-and-retire-on-a-number.md)). |
 
+## Why each pattern is there
+
+| Pattern (box in the diagram) | One sentence on why it is there |
+| --- | --- |
+| **Channel Adapter** (SFTP inbound adapter) | The partner only knows how to drop a file, so the flow polls the folder and fetches each file once instead of asking the partner to change. |
+| **Splitter** | One order is the unit of work, so a file of 10,000 lines becomes 10,000 messages that can fail, retry and be counted one by one. |
+| **Message Filter** (the header line) | The first line names the columns and is not an order, so it is dropped before it can be mistaken for a bad one. |
+| **Message Translator** (`OrderParser`) | The rest of the system should see an `Order`, not a comma-separated line; the translator is the only place that knows the file format. |
+| **Content-Based Router** (valid or not) | A bad line must not stop the file or reach the broker, so the router sends it down its own path and the good ones down theirs. |
+| **Dead Letter Channel** (`dead-letter` queue) | A refused line keeps its text and its reason where a person can fix and resend it, instead of disappearing into a log. |
+| **Idempotent Receiver** (the memory of order ids) | The partner resends files, so duplicates are removed here, after validation and before the broker, and a crash between the confirm and the record costs one repeated publish, never a lost order. **This is where duplicates are removed (the first of two places).** |
+| **Guaranteed Delivery** (durable queues, publisher confirms) | An order is forgotten by the flow only when the broker says it has it. |
+| **Idempotent Consumer** (the order service) | The broker delivers at least once, so the table, not the queue, makes a repeat harmless: `ON CONFLICT DO NOTHING`. **The second place duplicates are removed.** |
+| **Content Enricher** | Not used: the order in the file carries everything the order service needs. |
+
+State, as the lesson asks to mark it: the **receiver's memory** (`INT_METADATA_STORE`) and the **broker** hold state; the adapter, splitter, translator, filter and router can be restarted freely. What happens to a bad message at each box: the filter drops the header; the translator turns a bad line into a `Rejection`; the router sends it to the dead-letter queue; the receiver never sees it; the broker holds a good order until the service takes it; the service stores it, or after three failures sends it to `rejected`.
+
 ## Pattern: enterprise integration patterns on Spring Integration, rules in plain Java
 
 The flow is built from named patterns (Channel Adapter, Splitter, Message Filter, Message Translator, Content-Based Router, Dead Letter Channel, Idempotent Receiver, Competing Consumers) and each stage is a few lines in a Java DSL. What a valid order is lives in `domain` and does not know Spring; the use cases `ProcessOrderMessage` and `ReconcileOrders` depend on ports (`OrderStore`, `ReconciliationSource`, `ReconciliationHistory`, `PartnerDrop`); Spring Integration, Spring AMQP, JDBC and SFTP implement them in `infrastructure`. `ArchitectureTest` enforces the layers ([ADR 5](docs/adr/0005-ports-and-adapters.md)).
@@ -90,7 +107,7 @@ flowchart LR
 
 | Failure | What you see | Reproduce |
 | --- | --- | --- |
-| **The partner sends the same file again** | no new order in either path; the duplicate counter equals the order count | `make partner-again` |
+| **The partner sends the same file again** | no new order, and the dead-letter queue keeps its 3 lines; the duplicate counter equals the 10,000 lines | `make partner-again` |
 | **A malformed line** | the line and its reason in `dead-letter`; the rest of the file flows | `make partner` (a few lines are planted bad) |
 | **The broker restarts in the middle** | nothing lost, nothing doubled: the orders are still `n` in `orders_events` | `make demo-restart` |
 | **The order service is down** | orders wait in the durable queue and arrive when it returns | `make demo-restart` |
