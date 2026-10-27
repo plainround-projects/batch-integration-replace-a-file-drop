@@ -1,0 +1,98 @@
+# The partner's SFTP server, the broker, the database, and (profile "apps") the flow and the order service as containers.
+# Local use only; every credential comes from .env and is a throwaway.
+name: batch-integration-replace-a-file-drop
+
+services:
+  postgres:
+    image: postgres:16
+    ports:
+      - "${POSTGRES_PORT:-55561}:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-orderflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?copy .env.example to .env first}
+      POSTGRES_DB: ${POSTGRES_DB:-orderflow}
+    shm_size: 256mb
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 5s
+    volumes:
+      - orderflow-data:/var/lib/postgresql/data
+
+  rabbit:
+    image: rabbitmq:3.13-management
+    hostname: rabbit
+    ports:
+      - "${RABBIT_PORT:-56721}:5672"
+      - "${RABBIT_MANAGEMENT_PORT:-56722}:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBIT_USER:-orderflow}
+      RABBITMQ_DEFAULT_PASS: ${RABBIT_PASSWORD:?copy .env.example to .env first}
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 15s
+      retries: 30
+      start_period: 20s
+    volumes:
+      - rabbit-data:/var/lib/rabbitmq
+
+  sftp:
+    image: atmoz/sftp:alpine
+    # user:password:uid:gid:folder - the folder "upload" is created inside the user's home and is writable.
+    command: ["partner:${SFTP_PASSWORD:?copy .env.example to .env first}:::upload"]
+    ports:
+      - "${SFTP_PORT:-56222}:22"
+    volumes:
+      - sftp-data:/home/partner/upload
+
+  # The two services of the new path, as containers built from this repository (make apps). The same image runs both;
+  # the profile decides which one. restart: unless-stopped brings them back after `docker restart` or a crash.
+  flow:
+    build: .
+    profiles: ["apps"]
+    restart: unless-stopped
+    depends_on:
+      postgres: {condition: service_healthy}
+      rabbit: {condition: service_healthy}
+      sftp: {condition: service_started}
+    environment: &app-environment
+      SPRING_PROFILES_ACTIVE: flow
+      DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-orderflow}
+      DB_USER: ${POSTGRES_USER:-orderflow}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      RABBIT_HOST: rabbit
+      RABBIT_PORT: "5672"
+      RABBIT_USER: ${RABBIT_USER:-orderflow}
+      RABBIT_PASSWORD: ${RABBIT_PASSWORD}
+      SFTP_HOST: sftp
+      SFTP_PORT: "22"
+      SFTP_USER: partner
+      SFTP_PASSWORD: ${SFTP_PASSWORD}
+    command: ["--command=serve"]
+
+  order-service:
+    build: .
+    profiles: ["apps"]
+    restart: unless-stopped
+    depends_on:
+      postgres: {condition: service_healthy}
+      rabbit: {condition: service_healthy}
+      sftp: {condition: service_started}
+    environment:
+      <<: *app-environment
+      SPRING_PROFILES_ACTIVE: order-service
+    command: ["--command=serve"]
+
+volumes:
+  orderflow-data:
+  rabbit-data:
+  sftp-data:
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 10.231.6.0/24

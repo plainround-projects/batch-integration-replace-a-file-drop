@@ -1,0 +1,8 @@
+.git
+target
+data
+logs
+docs
+.env
+.omc
+rejects.txt

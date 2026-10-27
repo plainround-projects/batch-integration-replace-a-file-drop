@@ -1,0 +1,35 @@
+name: ci
+
+on: [push, pull_request]
+
+jobs:
+  check:
+    name: Format, compile with -Werror, unit and architecture tests with coverage, dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - run: make lint
+      - run: make test
+      - run: make audit
+
+  integration:
+    name: Integration and end-to-end tests (PostgreSQL, RabbitMQ and an SFTP server from the compose file)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - run: make up
+      - run: make db
+      - run: make test-integration test-e2e
+      - if: always()
+        run: make down

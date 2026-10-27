@@ -1,0 +1,12 @@
+target/
+.idea/
+*.iml
+.vscode/
+.DS_Store
+.env
+logs/
+data/
+rejects.txt
+*.log
+.omc/
+dependency-reduced-pom.xml
