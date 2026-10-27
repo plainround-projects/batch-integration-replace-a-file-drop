@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Structured logging: one JSON object per line on STANDARD ERROR, so standard output carries only the program's
+     results (the report line, the step table) and the two can be redirected apart. -->
+<configuration>
+  <appender name="STDERR" class="ch.qos.logback.core.ConsoleAppender">
+    <target>System.err</target>
+    <encoder class="org.springframework.boot.logging.logback.StructuredLogEncoder">
+      <format>logstash</format>
+    </encoder>
+  </appender>
+  <root level="INFO">
+    <appender-ref ref="STDERR"/>
+  </root>
+</configuration>

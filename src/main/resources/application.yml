@@ -1,0 +1,48 @@
+# Configuration from the environment (twelve-factor); the values below are defaults for the compose stack.
+spring:
+  application:
+    name: order-flow
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:55561/orderflow}
+    username: ${DB_USER:orderflow}
+    password: ${DB_PASSWORD:}
+    hikari:
+      maximum-pool-size: 5
+      connection-timeout: 20000
+  rabbitmq:
+    host: ${RABBIT_HOST:localhost}
+    port: ${RABBIT_PORT:56721}
+    username: ${RABBIT_USER:orderflow}
+    password: ${RABBIT_PASSWORD:}
+    publisher-returns: true
+    template:
+      mandatory: true            # an unroutable message is returned, not silently dropped
+    listener:
+      simple:
+        default-requeue-rejected: false # a rejected message goes to the dead-letter queue, not back to the head
+        prefetch: 50
+        retry:
+          enabled: true          # three attempts, then rejected without requeue
+          max-attempts: 3
+          initial-interval: 500ms
+          multiplier: 2.0
+  main:
+    banner-mode: off
+    web-application-type: none
+logging:
+  level:
+    root: INFO
+    org.springframework.amqp: WARN
+    org.apache.sshd: WARN
+
+orderflow:
+  sftp:
+    host: ${SFTP_HOST:localhost}
+    port: ${SFTP_PORT:56222}
+    user: ${SFTP_USER:partner}
+    password: ${SFTP_PASSWORD:}
+    remote-directory: upload
+  inbox: ${ORDERFLOW_INBOX:data/inbox}
+  poll-seconds: ${ORDERFLOW_POLL_SECONDS:5}
+  confirm-timeout-millis: ${ORDERFLOW_CONFIRM_TIMEOUT_MILLIS:5000}
+  clean-nights-to-retire: ${ORDERFLOW_CLEAN_NIGHTS_TO_RETIRE:14}
