@@ -1,19 +1,20 @@
 # Architecture: replacing a nightly file drop with an event flow
 
-Component names match the lesson's diagram ("Replacing a nightly file drop"): **Partner SFTP folder**, **Inbound adapter**, **Splitter**, **Translator**, **Router**, **Idempotent receiver**, **Dead letter queue**, **Broker**, **Order service**, **Legacy batch loader** and the **Reconciliation** that compares the two paths.
+Component names match the lesson's diagram ("The partner's orders as a message flow"): **Partner file**, **Split and validate**, **Idempotent receiver**, **Broker**, **Order service** and **Orders table**, plus what the lesson adds in later steps: the **Dead letter queue**, the **Legacy batch loader** and the **Reconciliation** that compares the two paths.
 
 ## Components and what each owns
 
 | Component | Where it lives | What it owns |
 | --- | --- | --- |
-| **Partner SFTP folder** | `atmoz/sftp` in [`docker-compose.yml`](docker-compose.yml), generator [`GeneratePartnerFile`](src/main/java/plainround/orderflow/application/GeneratePartnerFile.java), adapter [`SftpPartnerDrop`](src/main/java/plainround/orderflow/infrastructure/sftp/SftpPartnerDrop.java) | The partner's nightly CSV of orders (10,000 lines, a few planted bad ones, duplicates when a file is sent twice). |
-| **Inbound adapter** | [`OrderFlowConfiguration#ingestFlow`](src/main/java/plainround/orderflow/infrastructure/flow/OrderFlowConfiguration.java) | Polls the folder, fetches each new `.csv` once (a persistent accept-once filter whose memory is a database table), downloads it into the local inbox. |
-| **Splitter** | `Files.splitter().markers()` in the same flow | One message per line; start and end markers around a file, which carry the file name and the line count. |
-| **Translator and filter** | `lineFlow`, domain [`OrderParser`](src/main/java/plainround/orderflow/domain/OrderParser.java) | Drops the header line; turns a line into an `Order` or a `Rejection` (a Result4J `Result`, no exceptions for expected bad input). |
-| **Router** | `lineFlow` (`route(Result::isError)`) | Sends refused lines to the dead-letter path and valid orders on. |
+| **Partner file** (the SFTP folder) | `atmoz/sftp` in [`docker-compose.yml`](docker-compose.yml), generator [`GeneratePartnerFile`](src/main/java/plainround/orderflow/application/GeneratePartnerFile.java), adapter [`SftpPartnerDrop`](src/main/java/plainround/orderflow/infrastructure/sftp/SftpPartnerDrop.java) | The partner's nightly CSV of orders (10,000 lines, a few planted bad ones, duplicates when a file is sent twice). |
+| **Split and validate**: inbound adapter | [`OrderFlowConfiguration#ingestFlow`](src/main/java/plainround/orderflow/infrastructure/flow/OrderFlowConfiguration.java) | Polls the folder, fetches each new `.csv` once (a persistent accept-once filter whose memory is a database table), downloads it into the local inbox. |
+| **Split and validate**: splitter | `Files.splitter().markers()` in the same flow | One message per line; start and end markers around a file, which carry the file name and the line count. |
+| **Split and validate**: translator and filter | `lineFlow`, domain [`OrderParser`](src/main/java/plainround/orderflow/domain/OrderParser.java) | Drops the header line; turns a line into an `Order` or a `Rejection` (a Result4J `Result`, no exceptions for expected bad input). |
+| **Split and validate**: router | `lineFlow` (`route(Result::isError)`) | Sends refused lines to the dead-letter path and valid orders on. |
 | **Dead letter queue** | `invalidFlow`, [`ConfirmedPublisher#publishDeadLetter`](src/main/java/plainround/orderflow/infrastructure/amqp/ConfirmedPublisher.java), queue `dead-letter` | The line, the reason and the file name, kept for a person. |
 | **Idempotent receiver** | `validFlow`, a `JdbcMetadataStore` region `orders` | "Have I published this order id already?" It is a lookup before the publish and a record after the broker's confirmation ([ADR 1](docs/adr/0001-remember-the-order-after-the-broker-confirms.md)). |
 | **Broker** | RabbitMQ, topology in [`RabbitTopology`](src/main/java/plainround/orderflow/infrastructure/amqp/RabbitTopology.java) | Durable queues `retail` and `wholesale` (one per order type, both dead-lettering to `rejected`) and `dead-letter`. |
+| **Orders table** | [`sql/001_schema.sql`](sql/001_schema.sql) (`orders_events`) | One row per order from the new path; the order service is its only writer. |
 | **Order service** | [`OrderListener`](src/main/java/plainround/orderflow/infrastructure/amqp/OrderListener.java), use case [`ProcessOrderMessage`](src/main/java/plainround/orderflow/application/ProcessOrderMessage.java), [`JdbcOrderStore`](src/main/java/plainround/orderflow/infrastructure/jdbc/JdbcOrderStore.java) | Consumes an order, writes `orders_events` with `ON CONFLICT DO NOTHING`. The second idempotent point ([ADR 2](docs/adr/0002-two-idempotent-points-and-two-tables.md)). |
 | **Legacy batch loader** | [`LegacyBatchLoader`](src/main/java/plainround/orderflow/infrastructure/jdbc/LegacyBatchLoader.java) | The old way: reads the same files, loads `orders_batch`. Kept running, untouched, until the retirement condition is met. |
 | **Reconciliation** | [`ReconcileOrders`](src/main/java/plainround/orderflow/application/ReconcileOrders.java), [`sql/reconcile.sql`](sql/reconcile.sql), [`RetirementPolicy`](src/main/java/plainround/orderflow/domain/RetirementPolicy.java) | The morning comparison of the two tables, its recorded history, and the rule for when the legacy path may go ([ADR 4](docs/adr/0004-run-both-paths-and-retire-on-a-number.md)). |
@@ -26,9 +27,9 @@ The flow is built from named patterns (Channel Adapter, Splitter, Message Filter
 
 ```mermaid
 flowchart LR
-    partner[/"Partner SFTP folder<br/>nightly CSV"/]
+    partner[/"Partner file<br/>SFTP folder, nightly CSV"/]
     subgraph flow["Event flow (Spring Integration)"]
-        inbound["Inbound adapter<br/>accept each file once"]
+        inbound["Split and validate<br/>inbound adapter: each file once"]
         split["Splitter<br/>one message per line"]
         trans["Translator<br/>line to order"]
         route{"Router<br/>valid?"}
@@ -40,7 +41,7 @@ flowchart LR
     broker[("Broker<br/>retail, wholesale")]
     rejected[("rejected")]
     svc["Order service<br/>insert, on conflict do nothing"]
-    events[("orders_events")]
+    events[("Orders table<br/>orders_events")]
     legacy["Legacy batch loader"]
     batch[("orders_batch")]
     recon["Reconciliation<br/>full outer join by order id"]
