@@ -8,6 +8,7 @@ PSQL="docker compose exec -T postgres psql -U ${POSTGRES_USER:-orderflow} -d ${P
 EVENTS="$PSQL -tAc"
 
 $PSQL < sql/reset.sql
+docker compose exec -T sftp sh -c 'rm -f /home/partner/upload/*.csv'
 for queue in retail wholesale dead-letter rejected; do docker compose exec -T rabbit rabbitmqctl purge_queue "$queue" > /dev/null; done
 night=1
 while [ "$night" -le 7 ]; do

@@ -12,6 +12,7 @@ wait_for() { # target count, seconds
 }
 
 $PSQL < sql/reset.sql
+docker compose exec -T sftp sh -c 'rm -f /home/partner/upload/*.csv'
 for queue in retail wholesale dead-letter rejected; do docker compose exec -T rabbit rabbitmqctl purge_queue "$queue" > /dev/null; done
 
 echo "== night 11: restart the broker while the flow is publishing"

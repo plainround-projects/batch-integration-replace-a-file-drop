@@ -45,8 +45,8 @@ services:
     command: ["partner:${SFTP_PASSWORD:?copy .env.example to .env first}:::upload"]
     ports:
       - "${SFTP_PORT:-56222}:22"
-    volumes:
-      - sftp-data:/home/partner/upload
+    # No volume on the upload folder: a named volume mounts root-owned and the partner user could not write to it.
+    # The folder lives in the container's own layer, which survives `docker restart`.
 
   # The two services of the new path, as containers built from this repository (make apps). The same image runs both;
   # the profile decides which one. restart: unless-stopped brings them back after `docker restart` or a crash.
@@ -89,7 +89,6 @@ services:
 volumes:
   orderflow-data:
   rabbit-data:
-  sftp-data:
 
 networks:
   default:

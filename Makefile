@@ -55,8 +55,9 @@ status: build ## files on SFTP, queue depths, rows per path, ids remembered
 queries: ## run sql/002_queries.sql
 	$(PSQL) < sql/002_queries.sql
 
-reset: ## forget both paths' orders, the receiver's memory and the loaded files
+reset: ## forget both paths' orders, the receiver's memory and the loaded files, and empty the partner's folder
 	$(PSQL) < sql/reset.sql
+	docker compose exec -T sftp sh -c 'rm -f /home/partner/upload/*.csv'
 
 purge: ## empty the broker's queues
 	docker compose exec -T rabbit rabbitmqctl purge_queue retail
