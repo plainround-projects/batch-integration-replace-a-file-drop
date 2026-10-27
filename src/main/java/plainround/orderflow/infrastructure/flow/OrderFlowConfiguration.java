@@ -1,6 +1,7 @@
 package plainround.orderflow.infrastructure.flow;
 
 import com.github.sviperll.result4j.Result;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.function.Function;
 import javax.sql.DataSource;
@@ -19,6 +20,7 @@ import org.springframework.integration.jdbc.metadata.JdbcMetadataStore;
 import org.springframework.integration.metadata.ConcurrentMetadataStore;
 import org.springframework.integration.sftp.dsl.Sftp;
 import org.springframework.integration.sftp.filters.SftpPersistentAcceptOnceFileListFilter;
+import org.springframework.util.DigestUtils;
 import plainround.orderflow.domain.Order;
 import plainround.orderflow.domain.OrderParser;
 import plainround.orderflow.domain.Rejection;
@@ -43,6 +45,13 @@ public class OrderFlowConfiguration {
   JdbcMetadataStore orderMemory(DataSource dataSource) {
     JdbcMetadataStore store = new JdbcMetadataStore(dataSource);
     store.setRegion("orders");
+    return store;
+  }
+
+  @Bean
+  JdbcMetadataStore deadLetterMemory(DataSource dataSource) {
+    JdbcMetadataStore store = new JdbcMetadataStore(dataSource);
+    store.setRegion("dead-letters");
     return store;
   }
 
@@ -117,22 +126,48 @@ public class OrderFlowConfiguration {
   }
 
   /**
-   * Dead Letter Channel: the line and the reason go to a queue, confirmed, instead of being lost.
+   * Dead Letter Channel: the line and the reason go to a queue, confirmed, instead of being lost. A
+   * line that was already dead-lettered, byte for byte, is not sent again (the partner resends the
+   * whole file, so the queue would grow with every resend); a corrected line is a different line
+   * and is processed as a new one. Like the orders, a line is remembered only after the broker has
+   * confirmed it.
    */
   @Bean
-  IntegrationFlow invalidFlow(ConfirmedPublisher publisher, FlowCounters counters) {
+  IntegrationFlow invalidFlow(
+      ConcurrentMetadataStore deadLetterMemory,
+      ConfirmedPublisher publisher,
+      FlowCounters counters) {
     return IntegrationFlow.from("invalid")
         .<Result<Order, Rejection>>handle(
             (result, headers) -> {
               Rejection rejection =
                   result.map(order -> (Rejection) null).recoverError(Function.identity());
-              publisher.publishDeadLetter(
-                  rejection.line(), rejection.reason(), String.valueOf(headers.get("file_name")));
-              counters.deadLettered();
-              log.info("DEAD LETTER: {} reason={}", rejection.line(), rejection.reason());
+              deadLetter(
+                  rejection,
+                  String.valueOf(headers.get("file_name")),
+                  deadLetterMemory,
+                  publisher,
+                  counters);
               return null;
             })
         .get();
+  }
+
+  private void deadLetter(
+      Rejection rejection,
+      String file,
+      ConcurrentMetadataStore memory,
+      ConfirmedPublisher publisher,
+      FlowCounters counters) {
+    String key = DigestUtils.md5DigestAsHex(rejection.line().getBytes(StandardCharsets.UTF_8));
+    if (memory.get(key) != null) {
+      counters.duplicate();
+      return;
+    }
+    publisher.publishDeadLetter(rejection.line(), rejection.reason(), file);
+    memory.putIfAbsent(key, "dead-lettered");
+    counters.deadLettered();
+    log.info("DEAD LETTER: {} reason={}", rejection.line(), rejection.reason());
   }
 
   /**
