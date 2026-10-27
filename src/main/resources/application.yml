@@ -14,6 +14,7 @@ spring:
     port: ${RABBIT_PORT:56721}
     username: ${RABBIT_USER:orderflow}
     password: ${RABBIT_PASSWORD:}
+    publisher-confirm-type: simple  # confirmSelect() on every channel, so the publisher can wait for the broker's confirm
     publisher-returns: true
     template:
       mandatory: true            # an unroutable message is returned, not silently dropped

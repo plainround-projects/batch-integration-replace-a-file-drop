@@ -5,8 +5,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import lombok.RequiredArgsConstructor;
+import org.springframework.amqp.core.AmqpAdmin;
 import org.springframework.amqp.core.QueueInformation;
-import org.springframework.amqp.rabbit.core.RabbitAdmin;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.ExitCodeGenerator;
@@ -31,7 +31,7 @@ public class OrderflowRunner implements ApplicationRunner, ExitCodeGenerator {
   private final LegacyBatchLoader legacy;
   private final ReconcileOrders reconcile;
   private final JdbcTemplate jdbc;
-  private final RabbitAdmin admin;
+  private final AmqpAdmin admin;
   private volatile int exitCode;
 
   @Override

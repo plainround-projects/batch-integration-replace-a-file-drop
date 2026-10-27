@@ -30,7 +30,7 @@ public class SftpPartnerDrop implements PartnerDrop {
 
   /** Names of the files in the partner's folder, for the status command. */
   public java.util.List<String> list() {
-    return java.util.Arrays.stream(template.list(""))
+    return java.util.Arrays.stream(template.list(directory))
         .map(SftpClient.DirEntry::getFilename)
         .filter(name -> name.endsWith(".csv"))
         .sorted()
