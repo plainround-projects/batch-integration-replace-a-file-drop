@@ -16,6 +16,7 @@ import org.springframework.amqp.rabbit.core.RabbitAdmin;
 import org.springframework.context.ConfigurableApplicationContext;
 import plainround.orderflow.application.GeneratePartnerFile;
 import plainround.orderflow.application.ReconcileOrders;
+import plainround.orderflow.infrastructure.flow.FlowCounters;
 import plainround.orderflow.infrastructure.jdbc.LegacyBatchLoader;
 import plainround.orderflow.infrastructure.sftp.SftpPartnerDrop;
 import plainround.orderflow.integration.TestStack;
@@ -76,14 +77,17 @@ class ReplaceFileDropE2E {
 
   @Test
   @Order(2)
-  void
-      the_same_file_under_a_new_name_adds_no_order_and_the_bad_lines_reach_the_dead_letter_queue_again()
-          throws Exception {
+  void the_same_file_under_a_new_name_adds_no_order_and_the_dead_letter_queue_does_not_grow()
+      throws Exception {
     try (ConfigurableApplicationContext flow = TestStack.start(inbox, "flow")) {
       RabbitAdmin admin = flow.getBean(RabbitAdmin.class);
+      FlowCounters counters = flow.getBean(FlowCounters.class);
       upload(flow, 1, "orders-1-again.csv");
-      Awaitility.await().atMost(LONG).until(() -> TestStack.depth(admin, "dead-letter") == 6);
+      Awaitility.await()
+          .atMost(LONG)
+          .until(() -> counters.duplicateCount() == 9997 + 3 && counters.publishedCount() == 0);
       assertThat(published(admin)).isEqualTo(9997);
+      assertThat(TestStack.depth(admin, "dead-letter")).isEqualTo(3);
     }
   }
 
@@ -92,9 +96,13 @@ class ReplaceFileDropE2E {
   void the_flow_remembers_what_it_saw_across_a_restart() throws Exception {
     try (ConfigurableApplicationContext flow = TestStack.start(inbox, "flow")) {
       RabbitAdmin admin = flow.getBean(RabbitAdmin.class);
+      FlowCounters counters = flow.getBean(FlowCounters.class);
       upload(flow, 1, "orders-1-third.csv");
-      Awaitility.await().atMost(LONG).until(() -> TestStack.depth(admin, "dead-letter") == 9);
+      Awaitility.await()
+          .atMost(LONG)
+          .until(() -> counters.duplicateCount() == 9997 + 3 && counters.publishedCount() == 0);
       assertThat(published(admin)).isEqualTo(9997);
+      assertThat(TestStack.depth(admin, "dead-letter")).isEqualTo(3);
     }
   }
 
