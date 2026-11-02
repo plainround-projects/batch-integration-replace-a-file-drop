@@ -97,63 +97,91 @@ public class RabbitTopology {
 ```java
 package plainround.orderflow.infrastructure.amqp;
 
+import java.time.Duration;
+import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
+import org.springframework.amqp.AmqpException;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.retry.support.RetryTemplate;
 import plainround.orderflow.domain.Order;
 
 /**
  * Publishes and waits for the broker's confirmation on a dedicated channel. A nack or a timeout is
  * an exception, so the flow knows the order did not arrive and the idempotent receiver can forget
  * it. Messages are persistent and the queues durable: a confirmed order survives a broker restart.
+ *
+ * <p>While the broker is away (a restart takes seconds, sometimes a minute) a publish is tried
+ * again every two seconds for up to five minutes instead of failing, because a failure in the
+ * middle of a file would leave the rest of that file unpublished. A retry can publish an order
+ * twice (the confirm was lost, not the order); the order service stores it once.
  */
-@RequiredArgsConstructor
+@RequiredArgsConstructor(access = AccessLevel.PACKAGE)
 public class ConfirmedPublisher {
 
   private final RabbitTemplate template;
   private final long confirmTimeoutMillis;
+
+  private final RetryTemplate brokerAway;
+
+  /** Tries again every two seconds for up to five minutes while the broker is away. */
+  public ConfirmedPublisher(RabbitTemplate template, long confirmTimeoutMillis) {
+    this(template, confirmTimeoutMillis, whileBrokerAway(Duration.ofSeconds(2)));
+  }
+
+  static RetryTemplate whileBrokerAway(Duration pause) {
+    return RetryTemplate.builder()
+        .retryOn(AmqpException.class)
+        .traversingCauses()
+        .fixedBackoff(pause)
+        .withTimeout(Duration.ofMinutes(5))
+        .build();
+  }
 
   /**
    * Sends the order to the queue of its type; returns when the broker has taken responsibility for
    * it.
    */
   public void publishOrder(Order order, String partnerFile) {
-    template.invoke(
-        operations -> {
-          operations.convertAndSend(
-              "",
-              order.type().queue(),
-              order,
-              message -> {
-                message.getMessageProperties().setHeader("partnerFile", partnerFile);
-                return message;
-              });
-          operations.waitForConfirmsOrDie(confirmTimeoutMillis);
-          return null;
-        });
+    brokerAway.execute(
+        attempt ->
+            template.invoke(
+                operations -> {
+                  operations.convertAndSend(
+                      "",
+                      order.type().queue(),
+                      order,
+                      message -> {
+                        message.getMessageProperties().setHeader("partnerFile", partnerFile);
+                        return message;
+                      });
+                  operations.waitForConfirmsOrDie(confirmTimeoutMillis);
+                  return null;
+                }));
   }
 ```
 
-`ConfirmedPublisher` publishes an order and waits for the confirm. `template.invoke(operations -> {...})` runs the lambda with a `RabbitOperations` bound to one channel. `operations.convertAndSend("", order.type().queue(), order, postProcessor)` sends: the first argument `""` is the default exchange, the second is the routing key (the queue name `retail` or `wholesale`), the third is the object (converted to JSON), and the fourth is a lambda that adds a header `partnerFile` with the name of the source file before sending. `operations.waitForConfirmsOrDie(confirmTimeoutMillis)` then blocks until the broker confirms (5 seconds by default) and throws an exception on a nack or a timeout; the flow does not remember the order id if this throws. `return null;` is required because the lambda must return a value.
+`ConfirmedPublisher` publishes an order and waits for the confirm. `template.invoke(operations -> {...})` runs the lambda with a `RabbitOperations` bound to one channel. `operations.convertAndSend("", order.type().queue(), order, postProcessor)` sends: the first argument `""` is the default exchange, the second is the routing key (the queue name `retail` or `wholesale`), the third is the object (converted to JSON), and the fourth is a lambda that adds a header `partnerFile` with the name of the source file before sending. `operations.waitForConfirmsOrDie(confirmTimeoutMillis)` then blocks until the broker confirms (5 seconds by default) and throws an exception on a nack or a timeout; the flow does not remember the order id if this throws. `return null;` is required because the lambda must return a value. The whole call sits inside `brokerAway.execute(attempt -> ...)`: a `RetryTemplate` (the Spring Retry library, which Spring AMQP already depends on) that runs the lambda again when it throws an `AmqpException` or has one as its cause (`retryOn(AmqpException.class).traversingCauses()`), waits two seconds between tries (`fixedBackoff`) and gives up after five minutes (`withTimeout`). The reason is the lesson's restart step: when the broker restarts in the middle of a file, creating a channel fails with `AmqpConnectException: Connection refused`, and without the retry the splitter threw, the rest of the file was never published and the file was not read again (Spring Integration does not roll the file filter back after a failure downstream). With the retry the publisher waits for the broker, then carries on, and the file ends with every order published once. A retry can publish one order twice if the first confirm was lost; the order service stores it once. A second, package-private constructor takes the `RetryTemplate`, so the unit test can use a pause of one millisecond; `ConfirmedPublisherTest` checks that two failures then success make three calls, that a bug (an `IllegalStateException`) is not retried, and that a plain `AmqpException` is.
 
 ```java
   /** Sends a refused line to the dead-letter queue with the reason, confirmed the same way. */
   public void publishDeadLetter(String body, String reason, String partnerFile) {
-    template.invoke(
-        operations -> {
-          operations.convertAndSend(
-              "",
-              RabbitTopology.DEAD_LETTER,
-              body,
-              message -> {
-                message.getMessageProperties().setHeader("reason", reason);
-                message.getMessageProperties().setHeader("partnerFile", partnerFile);
-                return message;
-              });
-          operations.waitForConfirmsOrDie(confirmTimeoutMillis);
-          return null;
-        });
+    brokerAway.execute(
+        attempt ->
+            template.invoke(
+                operations -> {
+                  operations.convertAndSend(
+                      "",
+                      RabbitTopology.DEAD_LETTER,
+                      body,
+                      message -> {
+                        message.getMessageProperties().setHeader("reason", reason);
+                        message.getMessageProperties().setHeader("partnerFile", partnerFile);
+                        return message;
+                      });
+                  operations.waitForConfirmsOrDie(confirmTimeoutMillis);
+                  return null;
+                }));
   }
-}
 ```
 
 `publishDeadLetter` does the same for a refused line: the body is the original line as text, sent to the queue `dead-letter`, with headers `reason` and `partnerFile`. So a person looking at the queue sees why a line was refused and where it came from.

@@ -109,7 +109,7 @@ flowchart LR
 | --- | --- | --- |
 | **The partner sends the same file again** | no new order, and the dead-letter queue keeps its 3 lines; the duplicate counter equals the 10,000 lines | `make partner-again` |
 | **A malformed line** | the line and its reason in `dead-letter`; the rest of the file flows | `make partner` (a few lines are planted bad) |
-| **The broker restarts in the middle** | nothing lost, nothing doubled: the orders are still `n` in `orders_events` | `make demo-restart` |
+| **The broker restarts in the middle** | the publisher waits and tries again every two seconds (up to five minutes); nothing lost, nothing doubled: the orders are still `n` in `orders_events` | `make demo-restart`, `ConfirmedPublisherTest` |
 | **The order service is down** | orders wait in the durable queue and arrive when it returns | `make demo-restart` |
 | **A crash between the confirm and the record** | the order is published twice, stored once | `ReplaceFileDropE2E`, the restart phase |
 | **The new path misses or invents an order** | `reconcile` prints the ids and exits 2, and the retirement counter resets | `make demo-week` (a planted difference) |
@@ -117,6 +117,7 @@ flowchart LR
 
 ## Limits of the teaching build against production
 
+- **A broker that stays away longer than five minutes** makes the publish fail; the flow then stops in the middle of the file, and Spring Integration does not roll the file filter back, so that file is not read again by itself. Before this retry existed, a broker restart did exactly that (1,069 of 9,997 orders arrived); production adds a rollback of the filter on failure (the Spring Integration reference describes a transaction synchronization that removes the failed file) or a re-drop of the file.
 - **One flow instance.** The accept-once filter and the metadata store are in the database, so two instances would not double-publish, but they would race on the same file; production adds a lock or partitions the folder.
 - **Synchronous confirms.** About a millisecond per publish on a local broker; a fast partner needs batched or asynchronous confirms (ADR 3).
 - **A lookup and an insert per order** in the receiver's memory; fine at 10,000 a night, a cache or a bulk lookup beyond that.

@@ -100,14 +100,21 @@ public class ReconcileOrders {
 Here `@RequiredArgsConstructor` writes `ReconcileOrders(ReconciliationSource source, ReconciliationHistory history, RetirementPolicy policy)` in the order the fields are declared. The static constant `LISTED_DIFFERENCES` is not `final` instance state, so it is not part of the constructor. The nested `record Outcome` is not affected.
 
 ```java
-@RequiredArgsConstructor
+@RequiredArgsConstructor(access = AccessLevel.PACKAGE)
 public class ConfirmedPublisher {
 
   private final RabbitTemplate template;
   private final long confirmTimeoutMillis;
+
+  private final RetryTemplate brokerAway;
+
+  /** Tries again every two seconds for up to five minutes while the broker is away. */
+  public ConfirmedPublisher(RabbitTemplate template, long confirmTimeoutMillis) {
+    this(template, confirmTimeoutMillis, whileBrokerAway(Duration.ofSeconds(2)));
+  }
 ```
 
-`@RequiredArgsConstructor` writes `ConfirmedPublisher(RabbitTemplate template, long confirmTimeoutMillis)`, which `OrderFlowConfiguration` calls.
+`@RequiredArgsConstructor(access = AccessLevel.PACKAGE)` writes the three-argument constructor `ConfirmedPublisher(RabbitTemplate template, long confirmTimeoutMillis, RetryTemplate brokerAway)` and makes it visible only inside the package (`AccessLevel.PACKAGE`; the default is `PUBLIC`). The two-argument constructor below it is written by hand and is the one `OrderFlowConfiguration` calls; it fills in the retry rule and calls the generated one with `this(...)`.
 
 ```java
 @Component
