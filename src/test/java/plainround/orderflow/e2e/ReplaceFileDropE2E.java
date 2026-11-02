@@ -33,6 +33,12 @@ class ReplaceFileDropE2E {
 
   private static final Duration LONG = Duration.ofMinutes(6);
 
+  /**
+   * A resent file: 9,997 valid orders already published, the one line the file repeats, and the 3
+   * bad lines already dead-lettered.
+   */
+  private static final int RESENT_FILE_DUPLICATES = 9997 + 1 + 3;
+
   @TempDir static Path folder;
 
   private static Path inbox;
@@ -85,7 +91,10 @@ class ReplaceFileDropE2E {
       upload(flow, 1, "orders-1-again.csv");
       Awaitility.await()
           .atMost(LONG)
-          .until(() -> counters.duplicateCount() == 9997 + 3 && counters.publishedCount() == 0);
+          .until(
+              () ->
+                  counters.duplicateCount() == RESENT_FILE_DUPLICATES
+                      && counters.publishedCount() == 0);
       assertThat(published(admin)).isEqualTo(9997);
       assertThat(TestStack.depth(admin, "dead-letter")).isEqualTo(3);
     }
@@ -100,7 +109,10 @@ class ReplaceFileDropE2E {
       upload(flow, 1, "orders-1-third.csv");
       Awaitility.await()
           .atMost(LONG)
-          .until(() -> counters.duplicateCount() == 9997 + 3 && counters.publishedCount() == 0);
+          .until(
+              () ->
+                  counters.duplicateCount() == RESENT_FILE_DUPLICATES
+                      && counters.publishedCount() == 0);
       assertThat(published(admin)).isEqualTo(9997);
       assertThat(TestStack.depth(admin, "dead-letter")).isEqualTo(3);
     }
