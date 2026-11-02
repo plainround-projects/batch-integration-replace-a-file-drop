@@ -2,7 +2,7 @@
 
 All notable changes to this project are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/).
 
-## [0.1.0] - 2026-10-27
+## [0.1.0] - 2026-11-02
 
 ### Added
 
@@ -13,3 +13,9 @@ All notable changes to this project are recorded here. The format follows [Keep 
 - A cutover plan with a rollback and the three signals to watch.
 - SQL for the metadata store, both order paths, the reconciliation history and the lesson's queries.
 - Layered packages with the dependency rule enforced by ArchUnit; unit, integration and end-to-end tests with 95 percent line coverage required on domain and application; google-java-format, `-Xlint:all -Werror`, a Dockerfile, a compose file and a CI workflow.
+
+### Fixed
+
+- A broker restart in the middle of a file ended the file early: the publish failed with connection refused, the rest of the file was never published and the file was not read again (1,069 of 9,997 orders arrived). Publishing now tries again every two seconds for up to five minutes while the broker is away, with a unit test.
+- `make demo-cutover` starts from empty order tables so the count of clean nights is the only thing it tests.
+
