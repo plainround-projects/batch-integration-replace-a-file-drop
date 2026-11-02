@@ -404,13 +404,13 @@ public class FlowCounters {
 }
 ```
 
-The read side: `validCount`, `deadLetteredCount`, `duplicateCount`, `publishedCount`. The end-to-end tests read these to know when a file has been fully handled (`duplicateCount() == 9997 + 3 && publishedCount() == 0` for a resent file).
+The read side: `validCount`, `deadLetteredCount`, `duplicateCount`, `publishedCount`. The end-to-end tests read these to know when a file has been fully handled (`duplicateCount() == 10001 && publishedCount() == 0` for a resent file).
 
 ## Try it yourself
 
 1. Start the services and the flow: `make up db apps`.
 2. Drop a file and watch the flow: `make partner`, then `make logs`. Expect lines `flow: split 10002 lines -> 10001 orders (header dropped)`, `flow: 3 to dead letter`, `flow: 1 duplicate(s) dropped` and `flow: 9997 published`.
-3. See the idempotent receiver: `make partner-again`, wait 20 seconds, `make logs`. Expect `flow: 10000 duplicate(s) dropped` (9,997 orders and the 3 bad lines) and `flow: 0 published`.
+3. See the idempotent receiver: `make partner-again`, wait 20 seconds, `make logs`. Expect `flow: 10001 duplicate(s) dropped` (9,997 orders, the one repeated line and the 3 bad lines) and `flow: 0 published`.
 4. See the memory: `make queries` and read the second result: regions `dead-letters`, `files`, `orders` with counts 3, 2 and 9,997.
 5. Read the unit and end-to-end tests that exercise the flow: `src/test/java/plainround/orderflow/e2e/ReplaceFileDropE2E.java`; run them with `make test-e2e`.
 

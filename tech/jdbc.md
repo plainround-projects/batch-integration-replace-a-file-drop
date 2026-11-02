@@ -320,8 +320,8 @@ The test helper reads connection details from environment variables with default
 - **Building SQL by joining strings with user values.** That is SQL injection. Always pass values as `?` parameters, as this repository does.
 - **Leaking connections.** Borrowed and never returned connections empty the pool. Use `JdbcTemplate` (or a try-with-resources block) so they are always returned.
 - **A pool smaller than the number of threads that hold connections.** Callers wait on each other; size the pool for the largest number of threads that use it at once.
-- **Reading a whole huge table into memory.** Use a cursor with a `fetchSize`, as the readers here do.
-- **`null` from `queryForObject`.** A query such as `SELECT MAX(id)` over an empty table returns SQL `NULL`; the Java side gets `null`, so the code checks for it.
+- **Reading a whole huge table into memory.** Use a cursor with a `fetchSize`, or read in pages.
+- **`null` from `queryForObject`.** A query such as `SELECT MAX(id)` over an empty table returns SQL `NULL`; the Java side gets `null`, so code must check for it.
 
 ## Check yourself
 

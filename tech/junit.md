@@ -515,6 +515,12 @@ class ReplaceFileDropE2E {
 
   private static final Duration LONG = Duration.ofMinutes(6);
 
+  /**
+   * A resent file: 9,997 valid orders already published, the one line the file repeats, and the 3
+   * bad lines already dead-lettered.
+   */
+  private static final int RESENT_FILE_DUPLICATES = 9997 + 1 + 3;
+
   @TempDir static Path folder;
 
   private static Path inbox;
@@ -571,7 +577,10 @@ class ReplaceFileDropE2E {
       upload(flow, 1, "orders-1-again.csv");
       Awaitility.await()
           .atMost(LONG)
-          .until(() -> counters.duplicateCount() == 9997 + 3 && counters.publishedCount() == 0);
+          .until(
+              () ->
+                  counters.duplicateCount() == RESENT_FILE_DUPLICATES
+                      && counters.publishedCount() == 0);
       assertThat(published(admin)).isEqualTo(9997);
       assertThat(TestStack.depth(admin, "dead-letter")).isEqualTo(3);
     }
@@ -586,14 +595,17 @@ class ReplaceFileDropE2E {
       upload(flow, 1, "orders-1-third.csv");
       Awaitility.await()
           .atMost(LONG)
-          .until(() -> counters.duplicateCount() == 9997 + 3 && counters.publishedCount() == 0);
+          .until(
+              () ->
+                  counters.duplicateCount() == RESENT_FILE_DUPLICATES
+                      && counters.publishedCount() == 0);
       assertThat(published(admin)).isEqualTo(9997);
       assertThat(TestStack.depth(admin, "dead-letter")).isEqualTo(3);
     }
   }
 ```
 
-Test 1: start the flow, upload night 1, wait until the dead-letter queue holds 3 messages and the order queues together hold 9,997. Test 2: start the flow again (a restart: a new context), upload the same orders under a new name, and wait until the counters show 9,997 + 3 duplicates and 0 published; the queues are unchanged and the dead-letter queue did not grow. Test 3: a third copy after another restart gives the same result, so the flow remembers across restarts.
+Test 1: start the flow, upload night 1, wait until the dead-letter queue holds 3 messages and the order queues together hold 9,997. Test 2: start the flow again (a restart: a new context), upload the same orders under a new name, and wait until the counters show 10,001 duplicates (9,997 orders, the one line the file repeats and the 3 bad lines) and 0 published; the queues are unchanged and the dead-letter queue did not grow. Test 3: a third copy after another restart gives the same result, so the flow remembers across restarts.
 
 ```java
   @Test
