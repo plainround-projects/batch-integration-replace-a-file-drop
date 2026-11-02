@@ -50,7 +50,8 @@ set -eu
 JAR="${JAR:-target/replace-a-file-drop-0.1.0.jar}"
 PSQL="docker compose exec -T postgres psql -U ${POSTGRES_USER:-orderflow} -d ${POSTGRES_DB:-orderflow} -v ON_ERROR_STOP=1 -q"
 
-$PSQL -c "TRUNCATE reconciliation_run"
+# Both order tables empty: the nightly comparison is clean, so the count of clean nights is the only thing under test.
+$PSQL -c "TRUNCATE orders_batch, orders_events, legacy_loaded_file, reconciliation_run"
 echo "== 13 clean nights: not enough"
 $PSQL -c "INSERT INTO reconciliation_run (only_in_batch, only_in_events, different, same) SELECT 0, 0, 0, 9997 FROM generate_series(1, 12)"
 java -jar "$JAR" --command=reconcile | tail -1
@@ -63,7 +64,7 @@ java -jar "$JAR" --command=reconcile | tail -1
 
 Line 1 is the shebang; `/bin/sh` is the POSIX shell. Lines 2 and 3 are comments. Line 4, `set -eu`, stops on the first failing command and on any unset variable. Line 5, `JAR="${JAR:-target/replace-a-file-drop-0.1.0.jar}"`, sets `JAR` to the environment's value or the default path. Line 6 builds the `psql` command in a variable `PSQL` (the options are explained in the Make note), using the database user and name from the environment or defaults.
 
-Line 8 empties the history table (`-c` runs one SQL command). Line 10 inserts twelve clean nights at once: `INSERT INTO reconciliation_run (...) SELECT 0, 0, 0, 9997 FROM generate_series(1, 12)` selects the constants once for each number from 1 to 12 (`generate_series` produces those numbers as rows). Line 11 runs the reconciliation, which records the 13th clean night; `| tail -1` keeps only the last line of its output, the verdict. With 13 nights and a rule of 14, that line says the legacy path stays. Line 13 runs it again: the 14th clean night, so the verdict says the legacy path may be retired. Line 15 inserts a night with one difference; line 16 shows the verdict again: it stays, because the newest 14 are no longer all clean.
+Lines 8 and 9 empty both order tables, the record of loaded files and the history table (`-c` runs one SQL command): with both order tables empty every comparison is clean, so the number of clean nights is the only thing under test. (An earlier version of the script left the tables as the previous demo had left them; the comparison then reported orders on one side only and the verdict never changed. Found by running the demos in sequence.) Line 11 inserts twelve clean nights at once: `INSERT INTO reconciliation_run (...) SELECT 0, 0, 0, 9997 FROM generate_series(1, 12)` selects the constants once for each number from 1 to 12 (`generate_series` produces those numbers as rows). Line 12 runs the reconciliation, which records the 13th clean night; `| tail -1` keeps only the last line of its output, the verdict. With 13 nights and a rule of 14, that line says the legacy path stays. Line 14 runs it again: the 14th clean night, so the verdict says the legacy path may be retired. Line 16 inserts a night with one difference; line 17 shows the verdict again: it stays, because the newest 14 are no longer all clean.
 
 ### `scripts/demo_week.sh`: seven nights
 
