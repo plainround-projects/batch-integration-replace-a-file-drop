@@ -1,0 +1,158 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1040" viewBox="0 0 1200 1040" role="img" aria-labelledby="t d">
+<title id="t">A file drop replaced by a message flow</title>
+<desc id="d">The partner file, a nightly CSV on an SFTP folder, feeds two paths. The new path is a Spring Integration flow: an inbound adapter fetches each file once, a splitter makes one message per line, a translator drops the header and turns a line into an order, and a router sends invalid lines to the dead-letter queue and valid orders to the idempotent receiver. The receiver looks the order id up in its memory, and a new order goes to a confirmed publish into the RabbitMQ broker, which records the id only after the confirm. The order service consumes the queues and inserts into the orders table with on conflict do nothing. The old path, the legacy batch loader, reads the same files into orders_batch. Reconciliation compares the two tables and appends the result to reconciliation_run.</desc>
+<style>
+:root{--paper:#ffffff;--ink:#10243d;--mute:#52677f;--accent:#0a6aa8;--good:#19743f;--warn:#8a5a00}
+text{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace;fill:var(--ink)}
+.title{font-family:Georgia,'Iowan Old Style','Times New Roman',serif;font-size:36px}
+.caption{font-size:16px;fill:var(--mute)}
+.name{font-size:20px;font-weight:600}
+.lane{font-size:17px;font-weight:600}
+.sub{font-size:15px;fill:var(--mute)}
+.label{font-size:15px}
+.tag{font-size:15px;fill:var(--mute)}
+.num{font-size:15px;font-weight:700;fill:var(--paper)}
+.legend{font-size:14px;fill:var(--mute)}
+.t-accent{fill:var(--accent)}
+.t-good{fill:var(--good)}
+.t-warn{fill:var(--warn)}
+.t-ink{fill:var(--ink)}
+.b{font-weight:600}
+.paper{fill:var(--paper);stroke:var(--mute);stroke-opacity:.3}
+.grid{fill:url(#grid)}
+.boundary{fill:var(--mute);fill-opacity:.035;stroke:var(--mute);stroke-opacity:.7;stroke-dasharray:6 5}
+.svc{fill:var(--accent);fill-opacity:.08;stroke:var(--accent);stroke-width:1.25}
+.store{fill:var(--mute);fill-opacity:.1;stroke:var(--mute);stroke-width:1.25}
+.rim{fill:none;stroke:var(--mute);stroke-width:1.25}
+.actor{fill:none;stroke:var(--mute);stroke-width:1.25}
+.slot{fill:var(--accent);fill-opacity:.14;stroke:var(--accent);stroke-width:1}
+.note{fill:var(--warn);fill-opacity:.09;stroke:var(--warn);stroke-width:1}
+.win{fill:var(--good);fill-opacity:.09;stroke:var(--good);stroke-width:1}
+.hair{fill:none;stroke:var(--mute);stroke-opacity:.4;stroke-width:1}
+.zone{fill:var(--accent);fill-opacity:.045;stroke:var(--accent);stroke-width:1.25;stroke-dasharray:6 5}
+.stop{fill:none;stroke:var(--warn);stroke-width:4;stroke-linecap:round}
+.mask{fill:var(--paper)}
+.sync,.async,.read,.fail,.ok{fill:none}
+.sync{stroke:var(--accent);stroke-width:1.75;marker-end:url(#a-sync)}
+.async{stroke:var(--accent);stroke-width:1.75;stroke-dasharray:8 6;marker-end:url(#a-async)}
+.read{stroke:var(--mute);stroke-width:1.75;stroke-linecap:round;stroke-dasharray:1 6;marker-end:url(#a-read)}
+.fail{stroke:var(--warn);stroke-width:2;marker-end:url(#a-fail)}
+.ok{stroke:var(--good);stroke-width:1.75;marker-end:url(#a-ok)}
+.dot{fill:var(--accent)}
+.dot-w{fill:var(--warn)}
+.dot-g{fill:var(--good)}
+.head-sync,.head-async{stroke:var(--accent)}
+.head-sync{fill:var(--accent)}
+.head-async,.head-read{fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.head-read{stroke:var(--mute)}
+.head-fail{fill:var(--warn)}
+.head-ok{fill:var(--good)}
+.gridline{fill:none;stroke:var(--mute);stroke-opacity:.09}
+</style>
+<defs>
+<pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path class="gridline" d="M40 0H0V40"/></pattern>
+<marker id="a-sync" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path class="head-sync" d="M0 0L10 5L0 10z"/></marker>
+<marker id="a-async" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path class="head-async" d="M1 1L9 5L1 9"/></marker>
+<marker id="a-read" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path class="head-read" d="M1 1L9 5L1 9"/></marker>
+<marker id="a-fail" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path class="head-fail" d="M0 0L10 5L0 10z"/></marker>
+<marker id="a-ok" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path class="head-ok" d="M0 0L10 5L0 10z"/></marker>
+</defs>
+<rect class="paper" x="0.5" y="0.5" width="1199" height="1039" rx="16"/>
+<rect class="grid" x="1" y="1" width="1198" height="1038" rx="16"/>
+<text class="title" x="48" y="68">A file drop replaced by a message flow</text>
+<text class="caption" x="48" y="100">Two paths from one file, and a number that says when the old one can go. Duplicates are removed in two places.</text>
+<rect class="boundary" x="272" y="132" width="880" height="492" rx="14"/>
+<text class="tag" x="288" y="160">Event flow, Spring Integration</text>
+<path class="store" d="M48 188a94 12 0 0 1 188 0v76a94 12 0 0 1 -188 0z"/>
+<path class="rim" d="M48 188a94 12 0 0 0 188 0"/>
+<text class="name" x="142" y="220" text-anchor="middle">Partner file</text>
+<text class="sub" x="142" y="242" text-anchor="middle">SFTP, nightly CSV</text>
+<rect class="svc" x="300" y="184" width="168" height="84" rx="12"/>
+<text class="name" x="316" y="216">Adapter</text>
+<text class="sub" x="316" y="240">each file once</text>
+<rect class="svc" x="516" y="184" width="168" height="84" rx="12"/>
+<text class="name" x="532" y="216">Splitter</text>
+<text class="sub" x="532" y="240">one per line</text>
+<rect class="svc" x="732" y="184" width="168" height="84" rx="12"/>
+<text class="name" x="748" y="216">Translator</text>
+<text class="sub" x="748" y="240">line to Order</text>
+<rect class="svc" x="948" y="184" width="168" height="84" rx="12"/>
+<text class="name" x="964" y="216">Router</text>
+<text class="sub" x="964" y="240">valid or not</text>
+<rect class="svc" x="860" y="340" width="260" height="84" rx="12"/>
+<text class="name" x="876" y="372">Idempotent receiver</text>
+<text class="sub" x="876" y="396">seen this order id?</text>
+<rect class="svc" x="572" y="340" width="240" height="84" rx="12"/>
+<text class="name" x="588" y="372">Confirmed publish</text>
+<text class="sub" x="588" y="396">synchronous, 5 s max</text>
+<path class="store" d="M700 512a120 12 0 0 1 240 0v76a120 12 0 0 1 -240 0z"/>
+<path class="rim" d="M700 512a120 12 0 0 0 240 0"/>
+<text class="name" x="820" y="544" text-anchor="middle">Receiver memory</text>
+<text class="sub" x="820" y="566" text-anchor="middle">INT_METADATA_STORE</text>
+<rect class="note" x="300" y="470" width="256" height="120" rx="10"/>
+<text class="label b t-warn" x="316" y="500">make partner-again</text>
+<text class="sub" x="316" y="526">same file twice: the</text>
+<text class="sub" x="316" y="548">10,000 lines are counted</text>
+<text class="sub" x="316" y="570">as duplicates</text>
+<rect class="svc" x="572" y="688" width="580" height="114" rx="12"/>
+<text class="name" x="588" y="720">Broker</text>
+<text class="sub" x="588" y="744">RabbitMQ, durable queues</text>
+<text class="sub" x="588" y="766">retail, wholesale</text>
+<text class="sub" x="588" y="788">dead-letter, rejected</text>
+<rect class="svc" x="660" y="860" width="240" height="96" rx="12"/>
+<text class="name" x="676" y="892">Order service</text>
+<text class="sub" x="676" y="916">OrderListener</text>
+<text class="sub" x="676" y="938">on conflict do nothing</text>
+<path class="store" d="M300 700a110 12 0 0 1 220 0v76a110 12 0 0 1 -220 0z"/>
+<path class="rim" d="M300 700a110 12 0 0 0 220 0"/>
+<text class="name" x="410" y="732" text-anchor="middle">Orders table</text>
+<text class="sub" x="410" y="754" text-anchor="middle">orders_events</text>
+<rect class="svc" x="48" y="340" width="200" height="84" rx="12"/>
+<text class="name" x="64" y="372">Legacy loader</text>
+<text class="sub" x="64" y="396">LegacyBatchLoader</text>
+<path class="store" d="M48 512a100 12 0 0 1 200 0v54a100 12 0 0 1 -200 0z"/>
+<path class="rim" d="M48 512a100 12 0 0 0 200 0"/>
+<text class="name" x="148" y="544" text-anchor="middle">orders_batch</text>
+<rect class="svc" x="48" y="690" width="208" height="96" rx="12"/>
+<text class="name" x="64" y="722">Reconciliation</text>
+<text class="sub" x="64" y="746">full outer join</text>
+<text class="sub" x="64" y="768">by order id</text>
+<path class="store" d="M48 872a124 12 0 0 1 248 0v54a124 12 0 0 1 -248 0z"/>
+<path class="rim" d="M48 872a124 12 0 0 0 248 0"/>
+<text class="name" x="172" y="904" text-anchor="middle">reconciliation_run</text>
+<path class="sync" d="M236 226H300"/>
+<path class="sync" d="M468 226H516"/>
+<path class="sync" d="M684 226H732"/>
+<path class="sync" d="M900 226H948"/>
+<path class="sync" d="M1000 268V340"/>
+<text class="label t-accent" x="1012" y="312">valid</text>
+<path class="fail" d="M1116 226H1124Q1136 226 1136 238V688"/>
+<text class="label t-warn" text-anchor="end" x="1128" y="470">invalid</text>
+<path class="sync" d="M860 382H812"/>
+<text class="label t-accent" x="818" y="372">new</text>
+<path class="sync" d="M600 424V688"/>
+<text class="label t-accent" x="612" y="676">by order type</text>
+<path class="read" d="M900 504V424"/>
+<text class="label" x="912" y="466">lookup</text>
+<path class="async" d="M740 424V500"/>
+<text class="label t-accent" text-anchor="end" x="728" y="458">record after</text>
+<text class="label t-accent" text-anchor="end" x="728" y="480">the confirm</text>
+<path class="async" d="M780 802V860"/>
+<text class="label t-accent" x="792" y="836">consume</text>
+<path class="async" d="M880 860V802"/>
+<text class="label t-accent" x="892" y="836">3 failures: rejected</text>
+<path class="sync" d="M660 908H422Q410 908 410 896V790"/>
+<text class="label t-accent" x="480" y="898">insert</text>
+<path class="sync" d="M142 276V340"/>
+<text class="label t-accent" x="154" y="314">same files</text>
+<path class="sync" d="M148 424V500"/>
+<path class="read" d="M148 578V690"/>
+<path class="read" d="M300 738H256"/>
+<text class="label" x="262" y="728">read</text>
+<path class="sync" d="M152 786V860"/>
+<text class="label t-accent" x="164" y="830">append</text>
+<path class="sync" d="M48 996H112"/><text class="legend" x="124" y="1001">sync call</text>
+<path class="async" d="M264 996H328"/><text class="legend" x="340" y="1001">async message</text>
+<path class="read" d="M520 996H584"/><text class="legend" x="596" y="1001">read</text>
+<path class="fail" d="M696 996H760"/><text class="legend" x="772" y="1001">failure path</text>
+</svg>

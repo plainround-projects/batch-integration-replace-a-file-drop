@@ -9,6 +9,24 @@ A partner's nightly file of orders on an SFTP server, replaced by a Spring Integ
 | **Level** | Advanced |
 | **Architecture** | [ARCHITECTURE.md](ARCHITECTURE.md), decisions: [docs/adr](docs/adr), the cutover: [docs/CUTOVER.md](docs/CUTOVER.md) |
 
+## Architecture
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/architecture-dark.svg">
+  <img alt="The partner file feeds a Spring Integration flow of adapter, splitter, translator, router and idempotent receiver, then a confirmed publish into RabbitMQ and the order service, and the legacy batch loader in parallel; reconciliation compares orders_events with orders_batch." src="docs/diagrams/architecture.svg">
+</picture>
+
+Notice the two paths from one file, and that duplicates are removed twice: in the receiver before the broker and in the orders table after it.
+
+## How one run flows
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/flow-dark.svg">
+  <img alt="One partner file goes through adapter, splitter, translator, router and receiver to the broker, the order service and PostgreSQL, then the legacy loader and the reconciliation that counts clean runs." src="docs/diagrams/flow.svg">
+</picture>
+
+The run ends at 14 clean runs, when the legacy path may be retired; the amber rows show a bad line sent to dead-letter and an order id the receiver has already seen.
+
 ## Prerequisites
 
 | Tool | Version | Used for |
