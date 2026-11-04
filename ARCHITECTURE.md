@@ -34,7 +34,7 @@ Component names match the lesson's diagram ("The partner's orders as a message f
 | **Idempotent Consumer** (the order service) | The broker delivers at least once, so the table, not the queue, makes a repeat harmless: `ON CONFLICT DO NOTHING`. **The second place duplicates are removed.** |
 | **Content Enricher** | Not used: the order in the file carries everything the order service needs. |
 
-State, as the lesson asks to mark it: the **receiver's memory** (`INT_METADATA_STORE`) and the **broker** hold state; the adapter, splitter, translator, filter and router can be restarted freely. What happens to a bad message at each box: the filter drops the header; the translator turns a bad line into a `Rejection`; the router sends it to the dead-letter queue; the receiver never sees it; the broker holds a good order until the service takes it; the service stores it, or after three failures sends it to `rejected`.
+State, as the lesson asks to mark it: the **receiver's memory** (`INT_METADATA_STORE`, one table with three `JdbcMetadataStore` regions: `orders` for the idempotent receiver, `dead-letters` for bad lines, remembered by the md5 of the line, and `files` for the accept-once file filter) and the **broker** hold state; the adapter, splitter, translator, filter and router can be restarted freely. What happens to a bad message at each box: the filter drops the header; the translator turns a bad line into a `Rejection`; the router sends it to the dead-letter queue; the receiver never sees it; the broker holds a good order until the service takes it; the service stores it, or after three failures sends it to `rejected`.
 
 ## Pattern: enterprise integration patterns on Spring Integration, rules in plain Java
 
@@ -109,7 +109,7 @@ flowchart LR
 
 | Failure | What you see | Reproduce |
 | --- | --- | --- |
-| **The partner sends the same file again** | no new order, and the dead-letter queue keeps its 3 lines; the duplicate counter equals the 10,000 lines | `make partner-again` |
+| **The partner sends the same file again** | no new order, and the dead-letter queue keeps its 3 lines (the `dead-letters` region has already seen each bad line); the duplicate counter equals the 10,000 lines | `make partner-again` |
 | **A malformed line** | the line and its reason in `dead-letter`; the rest of the file flows | `make partner` (a few lines are planted bad) |
 | **The broker restarts in the middle** | the publisher waits and tries again every two seconds (up to five minutes); nothing lost, nothing doubled: the orders are still `n` in `orders_events` | `make demo-restart`, `ConfirmedPublisherTest` |
 | **The order service is down** | orders wait in the durable queue and arrive when it returns | `make demo-restart` |

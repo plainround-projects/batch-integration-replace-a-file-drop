@@ -64,7 +64,7 @@ Every statement the project runs against PostgreSQL is a file under [sql/](sql/)
 
 | File | Kind | What it holds | Run by |
 | --- | --- | --- | --- |
-| [001_schema.sql](sql/001_schema.sql) | DDL | `INT_METADATA_STORE` (Spring Integration's table, here the receiver's and the file memory), `orders_batch` (the old path), `orders_events` (the new path), `legacy_loaded_file` | `make db` |
+| [001_schema.sql](sql/001_schema.sql) | DDL | `INT_METADATA_STORE` (Spring Integration's table, here three regions: the receiver's memory, the dead-letter memory and the file memory), `orders_batch` (the old path), `orders_events` (the new path), `legacy_loaded_file` | `make db` |
 | [migrations/001_reconciliation_history.sql](sql/migrations/001_reconciliation_history.sql) | DDL | `reconciliation_run`, one row per morning, the history the retirement rule reads | `make db` |
 | [reconcile.sql](sql/reconcile.sql) | query | the four counts in one `FULL OUTER JOIN` of the two tables by order id | `make reconcile` |
 | [reconcile_details.sql](sql/reconcile_details.sql) | query | the ids behind any difference | `make reconcile` |
